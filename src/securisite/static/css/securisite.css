@@ -43,18 +43,45 @@ body {
 .header-right {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 16px;
 }
 
 .user-greeting {
-    font-size: 16px;
+    color: #6b7280;
+    font-size: 14px;
     font-weight: 500;
-    color: #212121;
+}
+
+.user-avatar {
+    color: #2563eb;
 }
 
 .user-avatar .material-icons {
     font-size: 32px;
     color: #757575;
+}
+
+.logout-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    color: #6b7280;
+    text-decoration: none;
+    transition: all 0.2s ease;
+    border: 1px solid transparent;
+}
+
+.logout-btn:hover {
+    background-color: #f3f4f6;
+    color: #dc2626;
+    border-color: #fee2e2;
+}
+
+.logout-btn .material-icons {
+    font-size: 20px;
 }
 
 /* Detail Header Styles */

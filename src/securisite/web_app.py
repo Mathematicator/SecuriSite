@@ -1,16 +1,20 @@
 """
 SecuriSite-IA Web Application
 Interface utilisateur pour l'analyse des risques de chantier
+Conçue pour Marc - Responsable sécurité non-technophile
 """
 
-from flask import Flask, render_template, jsonify, request, send_file
+from flask import Flask, render_template, jsonify, request, send_file, session, redirect, url_for, flash
 import json
 import asyncio
+import toml
+import hashlib
 from datetime import datetime, timedelta
 from pathlib import Path
 import os
 import sys
 from flask_cors import CORS
+from functools import wraps
 
 # Add current directory to path for imports
 current_dir = Path(__file__).parent
@@ -23,8 +27,107 @@ from .orchestrator import SecuriSiteOrchestrator
 app = Flask(__name__)
 CORS(app)
 
+# Configure Flask session
+app.secret_key = os.getenv('FLASK_SECRET_KEY', 'securisite-dev-key-change-in-production')
+app.config['SESSION_PERMANENT'] = False
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=8)
+
 # Initialize orchestrator
 orchestrator = SecuriSiteOrchestrator()
+
+def load_users():
+    """Load user credentials from TOML file"""
+    users_file = project_root / "users.toml"
+    if users_file.exists():
+        try:
+            return toml.load(users_file)
+        except Exception as e:
+            print(f"Error loading users.toml: {e}")
+    return {"users": {}, "config": {"require_authentication": False}}
+
+def verify_password(username, password):
+    """Verify user credentials"""
+    users_data = load_users()
+    users = users_data.get("users", {})
+    
+    if username in users:
+        stored_password = users[username].get("password", "")
+        # Simple password comparison (in production, use proper hashing)
+        return stored_password == password
+    return False
+
+def get_user_info(username):
+    """Get user information"""
+    users_data = load_users()
+    users = users_data.get("users", {})
+    
+    if username in users:
+        user_data = users[username].copy()
+        user_data["username"] = username
+        return user_data
+    return None
+
+def require_auth(f):
+    """Decorator to require authentication for routes"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        users_data = load_users()
+        require_auth = users_data.get("config", {}).get("require_authentication", False)
+        
+        if not require_auth:
+            return f(*args, **kwargs)
+            
+        if 'username' not in session:
+            return redirect(url_for('login'))
+            
+        # Check session timeout
+        if 'login_time' in session:
+            timeout_minutes = users_data.get("config", {}).get("session_timeout_minutes", 480)
+            login_time = datetime.fromisoformat(session['login_time'])
+            if datetime.now() - login_time > timedelta(minutes=timeout_minutes):
+                session.clear()
+                flash('Session expirée. Veuillez vous reconnecter.', 'warning')
+                return redirect(url_for('login'))
+        
+        return f(*args, **kwargs)
+    return decorated_function
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    """Login page and authentication"""
+    users_data = load_users()
+    require_auth = users_data.get("config", {}).get("require_authentication", False)
+    
+    if not require_auth:
+        # If authentication is disabled, redirect to dashboard
+        return redirect(url_for('dashboard'))
+    
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '')
+        
+        if verify_password(username, password):
+            user_info = get_user_info(username)
+            session['username'] = username
+            session['user_info'] = user_info
+            session['login_time'] = datetime.now().isoformat()
+            
+            flash(f'Bienvenue, {user_info.get("full_name", username)} !', 'success')
+            return redirect(url_for('dashboard'))
+        else:
+            return render_template('login.html', 
+                                 error='Nom d\'utilisateur ou mot de passe incorrect.',
+                                 username=username)
+    
+    return render_template('login.html')
+
+@app.route('/logout')
+def logout():
+    """Logout and clear session"""
+    username = session.get('user_info', {}).get('full_name', 'Utilisateur')
+    session.clear()
+    flash(f'Au revoir, {username} !', 'info')
+    return redirect(url_for('login'))
 
 def load_real_data():
     """Load real data from assets folder"""
@@ -274,6 +377,7 @@ except Exception as e:
     REAL_RISKS = []
 
 @app.route('/')
+@require_auth
 def dashboard():
     """Dashboard page showing risk overview"""
     selected_date = request.args.get('date', datetime.now().strftime("%Y-%m-%d"))
@@ -297,6 +401,10 @@ def dashboard():
     except:
         current_date_display = selected_date
     
+    # Get current user info
+    user_info = session.get('user_info', {})
+    user_display_name = user_info.get('full_name', 'Utilisateur')
+    
     return render_template('dashboard.html', 
                          risks=filtered_risks,
                          risk_score=round(global_score, 1),
@@ -304,9 +412,11 @@ def dashboard():
                          risk_color=risk_color,
                          selected_date=selected_date,
                          current_date_display=current_date_display,
-                         current_date=selected_date)
+                         current_date=selected_date,
+                         user_name=user_display_name)
 
 @app.route('/risk/<risk_id>')
+@require_auth
 def risk_detail(risk_id):
     """Risk detail page"""
     # Find the specific risk
@@ -322,6 +432,7 @@ def risk_detail(risk_id):
     return render_template('risk_detail.html', risk=risk)
 
 @app.route('/api/images/<image_name>')
+@require_auth
 def serve_image(image_name):
     """Serve images from assets folder"""
     # Try EST-1 first, then EST-2
@@ -333,6 +444,7 @@ def serve_image(image_name):
     return "Image not found", 404
 
 @app.route('/api/report/latest')
+@require_auth
 def latest_report():
     """API endpoint for latest risk report"""
     selected_date = request.args.get('date', datetime.now().strftime("%Y-%m-%d"))
@@ -351,6 +463,7 @@ def latest_report():
     })
 
 @app.route('/api/risk/<risk_id>')
+@require_auth
 def api_risk_detail(risk_id):
     """API endpoint for risk details"""
     risk = next((r for r in REAL_RISKS if r['id'] == risk_id), None)
@@ -359,6 +472,7 @@ def api_risk_detail(risk_id):
     return jsonify(risk)
 
 @app.route('/api/risk/<risk_id>/ack', methods=['POST'])
+@require_auth
 def acknowledge_risk(risk_id):
     """Mark a risk as acknowledged/treated"""
     # In a real system, this would update a database

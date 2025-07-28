@@ -15,10 +15,13 @@
             <h1 class="logo">SecuriSite-IA</h1>
         </div>
         <div class="header-right">
-            <span class="user-greeting">Bonjour Badr Eddine</span>
+            <span class="user-greeting">Bonjour {{ user_name or 'Utilisateur' }}</span>
             <div class="user-avatar">
                 <span class="material-icons">account_circle</span>
             </div>
+            <a href="{{ url_for('logout') }}" class="logout-btn" title="Se déconnecter">
+                <span class="material-icons">logout</span>
+            </a>
         </div>
     </header>
 
@@ -48,137 +51,102 @@
                 <div class="score-max">/10</div>
             </div>
             <div class="score-label">{{ risk_level }}</div>
-            <div class="score-summary">
-                {{ risks|length }} risque{{ 's' if risks|length > 1 else '' }} identifié{{ 's' if risks|length > 1 else '' }}
-                {% if risks|selectattr('severity', 'ge', 8)|list|length > 0 %}
-                nécessitant une action immédiate
+            <div class="score-description">
+                {% if risks %}
+                    {{ risks|length }} risque{{ 's' if risks|length > 1 else '' }} détecté{{ 's' if risks|length > 1 else '' }}
+                {% else %}
+                    Aucun risque détecté aujourd'hui
                 {% endif %}
             </div>
         </div>
 
-        <!-- Liste des Risques -->
+        <!-- Section Risques -->
         <section class="risks-section">
-            <h2 class="section-title">Détail des Risques Majeurs</h2>
+            <h2 class="section-title">
+                <span class="material-icons">warning</span>
+                Risques Détectés
+            </h2>
             
             {% if risks %}
-                <div class="risks-list">
+                <div class="risks-grid">
                     {% for risk in risks %}
                     <div class="risk-card" onclick="navigateToRisk('{{ risk.id }}')" 
                          style="border-left: 4px solid {% if risk.severity >= 8 %}#D32F2F{% elif risk.severity >= 6 %}#F57C00{% else %}#388E3C{% endif %};">
                         <div class="risk-content">
                             <div class="risk-header">
-                                <span class="material-icons risk-icon">warning</span>
                                 <h3 class="risk-title">{{ risk.title }}</h3>
-                                <div class="severity-badge" 
+                                <div class="risk-severity" 
                                      style="background-color: {% if risk.severity >= 8 %}#D32F2F{% elif risk.severity >= 6 %}#F57C00{% else %}#388E3C{% endif %};">
                                     {{ risk.severity }}/10
                                 </div>
                             </div>
-                            <div class="risk-location">
-                                <span class="material-icons">location_on</span>
-                                <span>{{ risk.location }}</span>
+                            <div class="risk-details">
+                                <p class="risk-location">
+                                    <span class="material-icons">location_on</span>
+                                    {{ risk.location }}
+                                </p>
+                                <p class="risk-time">
+                                    <span class="material-icons">access_time</span>
+                                    {{ risk.timestamp.split(' ')[1] }}
+                                </p>
                             </div>
-                            <div class="risk-time">
-                                <span class="material-icons">schedule</span>
-                                <span>{{ risk.timestamp.split(' ')[0] }}, {{ risk.timestamp.split(' ')[1][:5] }}</span>
-                            </div>
+                            <p class="risk-description">{{ risk.description[:100] }}...</p>
                         </div>
                         <div class="risk-arrow">
-                            <span class="material-icons">arrow_forward</span>
+                            <span class="material-icons">chevron_right</span>
                         </div>
                     </div>
                     {% endfor %}
                 </div>
             {% else %}
-                <div class="no-risks">
-                    <span class="material-icons success-icon">check_circle</span>
-                    <h3>Aucun risque majeur détecté</h3>
-                    <p>Toutes les zones surveillées respectent les consignes de sécurité.</p>
+                <div class="empty-state">
+                    <span class="material-icons">check_circle</span>
+                    <h3>Aucun risque détecté</h3>
+                    <p>Félicitations ! Aucun problème de sécurité n'a été identifié pour cette date.</p>
                 </div>
             {% endif %}
         </section>
-
-        <!-- Refresh Button -->
-        <div class="refresh-section">
-            <button class="refresh-btn" onclick="refreshAnalysis()">
-                <span class="material-icons">refresh</span>
-                Actualiser l'analyse
-            </button>
-        </div>
     </main>
 
-    <!-- Loading Overlay -->
-    <div id="loadingOverlay" class="loading-overlay" style="display: none;">
-        <div class="loading-content">
-            <div class="spinner"></div>
-            <p>Analyse en cours...</p>
-        </div>
-    </div>
-
     <script>
-        function navigateToRisk(riskId) {
-            // Ajouter un feedback visuel
-            event.currentTarget.style.transform = 'scale(0.98)';
-            setTimeout(() => {
-                window.location.href = `/risk/${riskId}`;
-            }, 150);
-        }
-
-        function refreshAnalysis() {
-            const overlay = document.getElementById('loadingOverlay');
-            overlay.style.display = 'flex';
-            
-            // Simuler le temps d'analyse
-            setTimeout(() => {
-                location.reload();
-            }, 2000);
-        }
-
-        function navigateDate(days) {
+        // Navigation par date
+        function navigateDate(direction) {
             const currentDate = new Date(document.getElementById('datePicker').value);
-            const newDate = new Date(currentDate);
-            newDate.setDate(currentDate.getDate() + days);
-            
-            const newDateStr = newDate.toISOString().split('T')[0];
-            window.location.href = `/?date=${newDateStr}`;
+            currentDate.setDate(currentDate.getDate() + direction);
+            const newDate = currentDate.toISOString().split('T')[0];
+            window.location.href = `?date=${newDate}`;
         }
 
         function loadByDate() {
             const selectedDate = document.getElementById('datePicker').value;
-            window.location.href = `/?date=${selectedDate}`;
+            window.location.href = `?date=${selectedDate}`;
         }
 
-        // Set min/max date boundaries
-        const initDatePicker = () => {
+        function navigateToRisk(riskId) {
+            window.location.href = `/risk/${riskId}`;
+        }
+
+        // Mise à jour automatique du titre de la date
+        document.addEventListener('DOMContentLoaded', function() {
             const datePicker = document.getElementById('datePicker');
-            const today = new Date();
-            const oneWeekAgo = new Date(today);
-            oneWeekAgo.setDate(today.getDate() - 7);
+            const dateDisplay = document.getElementById('currentDateDisplay');
             
-            datePicker.min = oneWeekAgo.toISOString().split('T')[0];
-            datePicker.max = today.toISOString().split('T')[0];
-        };
-
-        // Auto-refresh every 5 minutes
-        setInterval(() => {
-            console.log('Auto-refresh triggered');
-            // Dans une vraie implémentation, faire un appel API pour vérifier les nouveaux risques
-        }, 5 * 60 * 1000);
-
-        // Touch feedback for tablets
-        document.querySelectorAll('.risk-card').forEach(card => {
-            card.addEventListener('touchstart', function() {
-                this.style.transform = 'scale(0.98)';
-                this.style.transition = 'transform 0.1s ease';
-            });
-            
-            card.addEventListener('touchend', function() {
-                this.style.transform = 'scale(1)';
+            datePicker.addEventListener('change', function() {
+                const date = new Date(this.value);
+                const options = { 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric',
+                    weekday: 'long'
+                };
+                dateDisplay.textContent = date.toLocaleDateString('fr-FR', options);
             });
         });
 
-        // Initialize date picker on load
-        document.addEventListener('DOMContentLoaded', initDatePicker);
+        // Auto-refresh every 5 minutes
+        setTimeout(function() {
+            window.location.reload();
+        }, 300000);
     </script>
 </body>
 </html>
