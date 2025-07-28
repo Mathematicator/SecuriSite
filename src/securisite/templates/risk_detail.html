@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ risk.title }} - SecuriSite-IA</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/securisite.css') }}">
+</head>
+<body>
+    <!-- Header -->
+    <header class="header detail-header">
+        <div class="header-left">
+            <button class="back-btn" onclick="goBack()">
+                <span class="material-icons">arrow_back</span>
+                <span>Retour</span>
+            </button>
+        </div>
+        <div class="header-center">
+            <h2 class="detail-title">{{ risk.title }}</h2>
+        </div>
+        <div class="header-right">
+            <div class="severity-indicator" 
+                 style="background-color: {% if risk.severity >= 8 %}#D32F2F{% elif risk.severity >= 6 %}#F57C00{% else %}#388E3C{% endif %};">
+                {{ risk.severity }}/10
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="detail-content">
+        <!-- Image Viewer -->
+        <section class="image-viewer">
+            <div class="image-container" id="imageContainer">
+                <img id="riskImage" 
+                     src="{{ url_for('serve_image', image_name=risk.image_path) }}" 
+                     alt="Image du risque"
+                     onload="drawAnnotations()">
+                <canvas id="annotationCanvas"></canvas>
+            </div>
+            <div class="image-controls">
+                <button class="zoom-btn" onclick="zoomIn()">
+                    <span class="material-icons">zoom_in</span>
+                </button>
+                <button class="zoom-btn" onclick="zoomOut()">
+                    <span class="material-icons">zoom_out</span>
+                </button>
+                <button class="zoom-btn" onclick="resetZoom()">
+                    <span class="material-icons">zoom_out_map</span>
+                </button>
+            </div>
+        </section>
+
+        <!-- Information Cards -->
+        <section class="info-cards">
+            <!-- Détails Card -->
+            <div class="info-card">
+                <h3 class="card-title">
+                    <span class="material-icons">info</span>
+                    Détails
+                </h3>
+                <div class="card-content">
+                    <div class="detail-row">
+                        <strong>Où :</strong> {{ risk.location }}
+                    </div>
+                    <div class="detail-row">
+                        <strong>Quand :</strong> {{ risk.timestamp.split(' ')[0] }} à {{ risk.timestamp.split(' ')[1][:5] }}
+                    </div>
+                    <div class="detail-row description">
+                        <strong>Description :</strong><br>
+                        {{ risk.description }}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Météo Card -->
+            {% if risk.weather %}
+            <div class="info-card weather-card">
+                <h3 class="card-title">
+                    <span class="material-icons">cloud</span>
+                    Contexte Météo
+                </h3>
+                <div class="card-content">
+                    <div class="weather-info">
+                        <div class="weather-item">
+                            <strong>Conditions :</strong> {{ risk.weather.condition }}
+                        </div>
+                        <div class="weather-item">
+                            <strong>Vent :</strong> {{ risk.weather.wind }}
+                        </div>
+                        <div class="weather-item">
+                            <strong>Visibilité :</strong> {{ risk.weather.visibility }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Réglementation Card -->
+            {% if risk.regulation %}
+            <div class="info-card regulation-card">
+                <h3 class="card-title">
+                    <span class="material-icons">menu_book</span>
+                    Rappel Réglementaire
+                </h3>
+                <div class="card-content">
+                    <div class="regulation-info">
+                        <div class="regulation-ref">
+                            <strong>Référence :</strong> {{ risk.regulation.reference }}
+                        </div>
+                        <div class="regulation-rule">
+                            <strong>Règle :</strong><br>
+                            "{{ risk.regulation.rule }}"
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </section>
+
+        <!-- Actions Zone -->
+        <section class="actions-zone">
+            <button class="primary-btn" onclick="markAsResolved('{{ risk.id }}')">
+                <span class="material-icons">check_circle</span>
+                Marquer comme Traité
+            </button>
+            <button class="secondary-btn" onclick="exportToPDF('{{ risk.id }}')">
+                <span class="material-icons">picture_as_pdf</span>
+                Exporter en PDF
+            </button>
+        </section>
+    </main>
+
+    <!-- Action Feedback -->
+    <div id="actionFeedback" class="action-feedback" style="display: none;">
+        <div class="feedback-content">
+            <span class="material-icons">check_circle</span>
+            <span id="feedbackMessage">Action effectuée avec succès</span>
+        </div>
+    </div>
+
+    <script>
+        let currentZoom = 1;
+        let isDragging = false;
+        let startX, startY, scrollLeft, scrollTop;
+
+        // Annotations data from backend
+        const annotations = {{ risk.annotations | tojson }};
+
+        function goBack() {
+            window.history.back();
+        }
+
+        function drawAnnotations() {
+            const img = document.getElementById('riskImage');
+            const canvas = document.getElementById('annotationCanvas');
+            const ctx = canvas.getContext('2d');
+            
+            // Set canvas size to match image
+            canvas.width = img.naturalWidth;
+            canvas.height = img.naturalHeight;
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw annotations
+            annotations.forEach(annotation => {
+                ctx.strokeStyle = annotation.color;
+                ctx.lineWidth = 3;
+                ctx.setLineDash([]);
+                
+                if (annotation.type === 'circle') {
+                    ctx.beginPath();
+                    ctx.arc(
+                        annotation.x * canvas.width,
+                        annotation.y * canvas.height,
+                        annotation.radius * Math.min(canvas.width, canvas.height),
+                        0, 2 * Math.PI
+                    );
+                    ctx.stroke();
+                } else if (annotation.type === 'box') {
+                    ctx.strokeRect(
+                        annotation.x1 * canvas.width,
+                        annotation.y1 * canvas.height,
+                        (annotation.x2 - annotation.x1) * canvas.width,
+                        (annotation.y2 - annotation.y1) * canvas.height
+                    );
+                }
+            });
+        }
+
+        function zoomIn() {
+            currentZoom = Math.min(currentZoom * 1.2, 3);
+            updateZoom();
+        }
+
+        function zoomOut() {
+            currentZoom = Math.max(currentZoom / 1.2, 0.5);
+            updateZoom();
+        }
+
+        function resetZoom() {
+            currentZoom = 1;
+            updateZoom();
+        }
+
+        function updateZoom() {
+            const container = document.getElementById('imageContainer');
+            const img = document.getElementById('riskImage');
+            const canvas = document.getElementById('annotationCanvas');
+            
+            const transform = `scale(${currentZoom})`;
+            img.style.transform = transform;
+            canvas.style.transform = transform;
+            
+            // Update container scroll position to center
+            if (currentZoom > 1) {
+                container.style.overflow = 'scroll';
+            } else {
+                container.style.overflow = 'hidden';
+            }
+        }
+
+        function markAsResolved(riskId) {
+            if (confirm('Êtes-vous sûr de vouloir marquer ce risque comme traité ?')) {
+                fetch(`/api/risk/${riskId}/ack`, { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        showFeedback('Risque marqué comme traité');
+                        setTimeout(() => {
+                            window.location.href = '/';
+                        }, 1500);
+                    })
+                    .catch(error => {
+                        showFeedback('Erreur lors du traitement', 'error');
+                    });
+            }
+        }
+
+        function exportToPDF(riskId) {
+            showFeedback('Génération du PDF en cours...');
+            window.open(`/api/risk/${riskId}/export-pdf`, '_blank');
+        }
+
+        function showFeedback(message, type = 'success') {
+            const feedback = document.getElementById('actionFeedback');
+            const messageEl = document.getElementById('feedbackMessage');
+            
+            messageEl.textContent = message;
+            feedback.className = `action-feedback ${type}`;
+            feedback.style.display = 'flex';
+            
+            setTimeout(() => {
+                feedback.style.display = 'none';
+            }, 3000);
+        }
+
+        // Touch and drag support for image panning
+        const imageContainer = document.getElementById('imageContainer');
+        
+        imageContainer.addEventListener('mousedown', startDrag);
+        imageContainer.addEventListener('touchstart', startDrag);
+        
+        function startDrag(e) {
+            if (currentZoom <= 1) return;
+            
+            isDragging = true;
+            const touch = e.touches ? e.touches[0] : e;
+            startX = touch.clientX - imageContainer.offsetLeft;
+            startY = touch.clientY - imageContainer.offsetTop;
+            scrollLeft = imageContainer.scrollLeft;
+            scrollTop = imageContainer.scrollTop;
+            
+            imageContainer.style.cursor = 'grabbing';
+        }
+
+        document.addEventListener('mousemove', drag);
+        document.addEventListener('touchmove', drag);
+        
+        function drag(e) {
+            if (!isDragging) return;
+            e.preventDefault();
+            
+            const touch = e.touches ? e.touches[0] : e;
+            const x = touch.clientX - imageContainer.offsetLeft;
+            const y = touch.clientY - imageContainer.offsetTop;
+            
+            imageContainer.scrollLeft = scrollLeft - (x - startX);
+            imageContainer.scrollTop = scrollTop - (y - startY);
+        }
+
+        document.addEventListener('mouseup', stopDrag);
+        document.addEventListener('touchend', stopDrag);
+        
+        function stopDrag() {
+            isDragging = false;
+            imageContainer.style.cursor = 'grab';
+        }
+
+        // Initialize
+        window.addEventListener('load', function() {
+            drawAnnotations();
+            imageContainer.style.cursor = 'grab';
+        });
+    </script>
+</body>
+</html>
