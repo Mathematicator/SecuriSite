@@ -14,7 +14,7 @@ Key capabilities
 |-------|---------|-----------------|
 | **ComputerVisionRiskDetector** | Detects PPE absence, proximity risks, crane zones, container obstructions | GPT‑4 Vision\* or JSON fallback, OpenCV, PIL |
 | **WeatherContextAgent** | Adds real‑time weather risk multipliers & recommendations | External API / local JSON, rules engine |
-| **RegulationAgent** | Maps detected risks to _Code du Travail_ articles, rates compliance | LangChain‑powered retrieval |
+| **RegulationAgent** | Maps detected risks to _Code du Travail_ articles, rates compliance | Knowledge Base (French Regulation) |
 | **ReportGenerationAgent** | Builds French‑language Markdown / PDF reports | Jinja2 templates |
 | **PerformanceEvaluator** | Tracks detection accuracy, coverage, speed | Baseline vs. live metrics |
 
