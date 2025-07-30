@@ -5,7 +5,7 @@ _Construction‑Site Safety Intelligence powered by a multi‑agent, GPT‑4 V
 SecuriSite‑IA is a **multi‑agent system** that turns raw images and context data from a construction site into actionable safety insights, French labour‑code compliance checks, and beautifully formatted reports—all in a few seconds.
 
 <p align="center">
-  <img alt="High‑level architecture" src="architecture.svg">
+  <img alt="High‑level architecture" src="architecture.png">
 </p>
 
 Key capabilities
